@@ -1,0 +1,352 @@
+---
+title: "Kipling and Tagore"
+author: "Arundhati Balasubramaniam, Aditi Dindorkar, Ananya Moncourt"
+date: "12/03/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#NLP Libraries
+library(rJava)
+library(openNLP)
+library(NLP)
+library(syuzhet)
+library(tm)
+
+#Tidy data manipulation
+library(stringr)
+library(dplyr)
+library(tidyr)
+library(tidytext)
+library(readr)
+library(stringi)
+library(tidyverse)      # data manipulation & plotting
+
+#Corpus ingest
+library(gutenbergr)
+
+#Helper library
+library(fuzzyjoin)
+library(sqldf)
+
+#Graphics library
+library(ggiraphExtra)
+library(ggplot2)
+library(RColorBrewer)
+library(scales)
+```
+## Introduction
+
+The Indian subcontinent has been a rich source of inspiration for writers. Over time, several prominent works of literature have been rooted in diverse settings across the country. To assume that this body of work can be a monolith representation of the region is tenuous and lacks depth. Instead we believe it is important to uncover how narratives, descriptions and sentiments may differ based on the position of a particular writer. Literature produced during the British Empire’s reign in India is a prime site for examination of colonial power dynamics. Works coloured by the colonial gaze are closely associated with dominant power structures and express views on Indian-ness from a distanced standpoint of the “other”. On the other hand, Indian authors' experience of subjugation by colonizers may take on explicit or implicit forms of expression in their work. Towards this end, we chose Rudyard Kipling and Rabindranath Tagore’s writings in British India to examine contrasting perspectives, if any, using sentiment analysis tools in R. How sentiments associated with Indian people and places differ from those linked to foreign people and places in these works is our primary concern. 
+
+### Research Hypothesis
+
+We hypothesize that Rudyard Kipling and Rabindranath Tagore, writing at the same time, about the same country, present very different narratives. One espouses the colonial gaze— seeing India mainly as a seat of power, or a place of profit and not for its nuances of diversity and voices of its own inhabitants. The other describes India through its own people and in opposition to the colonial power looming over them. The sentiments associated with specific people and places will help us test our hypothesis. 
+
+
+### Corpus Description
+
+Our corpus contains the following following works:
+
+**Rudyard Kipling:**
+
+1. Kim
+
+2. Phantom Rickshaw and other Stories 
+
+**Rabindranath Tagore:**
+
+1. The Home and the World 
+
+2. Mashi and other stories. 
+
+We chose Kipling and Tagore because both the authors were writing stories set in British India, at around the same time. Both are also interesting in terms of their position between the Indian subcontinent and the British Empire. Kipling was born in India to Anglo-Indian parents, received formative education in England and came back to India as a young adult. While he enjoyed certain privileges available to the white coloniser, Kipling was not entirely a foreigner to India. This hybrid identity undoubtedly makes Kipling's experience of India distinct.
+
+Tagore meanwhile, is born and brought up in India— a native Indian.  Yet he belonged to that class of Indians who were well connected to the Britishers in power. Tagore belonged to an upper class Bengali family. He was well-traveled and many of his ideas about India’s freedom struggle took inspiration from movements abroad. Tagore’s views on colonialism were also evolving with the evolution of India’s independence movement. These instances of alliance and struggle, between India and the British Empire, make the authors' case even more interesting. 
+
+Both the writers have a wide variety of work, and we chose one novel and one book of short stories for a comparison. We chose the following books as they are set in different parts of India. We were interested in this representation of physical space along with the sentiments associated with them. 
+
+
+``` {r corpus}
+kipling_corpus <- gutenberg_download(c(2806,2226), mirror = "http://mirrors.xmission.com/gutenberg/", meta_fields = c("title", "author"))
+tagore_corpus <- gutenberg_download(c(34757,7166), mirror = "http://mirrors.xmission.com/gutenberg/", meta_fields = c("title", "author"))
+```
+
+### Summary
+
+It is  interesting to note that the most frequent word in the Tagore corpus is repeated only 350 times, while for Kipling it is 800. Our first instinct would suggest that Tagore uses a larger vocabulary, and does not repeat the same words, as compared to Kipling. However, due to the difference in lengths of the corpora, where Kipling’s is almost double that of Tagore, the ratio of the number of unique words to the total number of words is about the same.
+
+```{r vis 1}
+library(tidyr)
+tidy_kip <- kipling_corpus %>%
+unnest_tokens(word, text) %>%
+anti_join(stop_words)
+
+tidy_tag <- tagore_corpus %>%
+unnest_tokens(word, text) %>%
+anti_join(stop_words)
+
+frequency <- bind_rows(tidy_tag, tidy_kip) %>% 
+  mutate(word = str_extract(word, "[a-z']+")) %>% 
+  count(author, word) %>% 
+  group_by(author) %>%
+  mutate(proportion = n / sum(n)) %>%
+  select(-n) %>%
+  spread(author, proportion)
+  
+cor.test(data = frequency, ~ `Kipling, Rudyard` + `Tagore, Rabindranath`)
+```
+The Pearson's product-moment correlation between the corpora is 0.5691082, which is a strong correlation. This is unsurprising because they are authors who based their stories on the same countries and the similar people, in spite of their differing nationalities and views on colonialism. This confirms that the corpora we chose is one that is greatly suited to our research question.
+
+```{r word freq_ Kipling}
+Sample_data <- read.csv("kipling_freq.csv")
+data_frame<- do.call('rbind', lapply(Sample_data, as.data.frame))
+kipling <- Corpus(VectorSource(data_frame))
+kipling <- tm_map(kipling, tolower)
+kipling<- tm_map(kipling,removePunctuation)
+kipling <- tm_map(kipling, removeNumbers)
+kipling <- tm_map(kipling, removeWords,stopwords("english"))
+kipling <- tm_map(kipling, stripWhitespace)
+dtm_kip<- TermDocumentMatrix(kipling)
+m <- as.matrix(dtm_kip)
+v <- sort(rowSums(m),decreasing=TRUE)
+d <- data.frame(word = names(v),freq=v)
+head(d, 10)
+
+barplot(d[1:20,]$freq, las = 2, names.arg = d[1:20,]$word,
+        col ="pink", main ="Most frequent words in Kipling Corpus",
+        ylab = "Word frequencies") 
+  
+```
+
+```{r word freq Tagore}
+Sample_data <- read.csv("tagore_freq.csv")
+data_frame<- do.call('rbind', lapply(Sample_data, as.data.frame))
+tagore <- Corpus(VectorSource(data_frame))
+tagore <- tm_map(tagore, tolower)
+tagore<- tm_map(tagore,removePunctuation)
+tagore <- tm_map(tagore, removeNumbers)
+tagore <- tm_map(tagore, removeWords,stopwords("english"))
+tagore <- tm_map(tagore, stripWhitespace)
+dtm_tag <- TermDocumentMatrix(tagore)
+m <- as.matrix(dtm_tag)
+v <- sort(rowSums(m),decreasing=TRUE)
+d <- data.frame(word = names(v),freq=v)
+head(d, 10)
+
+barplot(d[1:20,]$freq, las = 2, names.arg = d[1:20,]$word,
+        col ="lightgreen", main ="Most frequent words in Tagore Corpus",
+        ylab = "Word frequencies")
+```
+
+Men are proactively either talking, or being talked about, in both the corpuses. ‘Kim’ (800), ‘man’ (a little above 400), ‘lama’ (approx. 400), ‘men’ (approx. 300) and ‘mahbub’(approx. 200) feature in the top twenty words of the Kipling corpus. ‘Sandip’(250), ‘husband’ (approx. 175) and ‘man’ (approx. 150)— all males— are the only people present in the top twenty words of the Tagore corpus. 
+
+
+``` {r dv1}
+clean_entities <- read.csv("entities_clean.csv")
+entities_unnest <- clean_entities %>%
+ unnest_tokens(word, sentence)
+entities_sentiment <- entities_unnest %>%
+  group_by(author, title) %>%
+  inner_join(get_sentiments("nrc")) %>% 
+  count(sentence_nr, sentiment) %>%
+  spread(sentiment, n, fill = 0) %>%
+  mutate(sentiment = positive-negative)
+entities_matches_sentiment <- entities_unnest %>%
+  inner_join(entities_sentiment) %>%
+  distinct_at(vars(-word))  
+entities_matches_sentiment  <-  entities_matches_sentiment %>%
+                           rename(entity = words) 
+
+ner_total_sentiment <- entities_matches_sentiment %>%
+                          group_by(author, title, entity, kind) %>%  
+                         count(sentiment, name="total") %>%
+                          distinct()
+```
+
+## Data Visualisation 1: Sentiment Analysis using barplots
+
+### People/Groups and Sentiment 
+
+We decided to conduct NRC sentiment analysis on the entities of each book. Unlike other sentiment dictionaries, the NRC  presents a variety of emotions for analysis instead of a binary positive/ negative like Bing. It should be noted that the tool records the net sentiment (positive - negative). 
+
+``` {r chart 1}
+ner_total_sentiment %>%
+  group_by(title) %>%
+  filter(kind == "person") %>%
+  top_n(10) %>% 
+  mutate(entity = reorder(entity, total)) %>% 
+  ggplot(aes(entity, y = total, fill = title)) +
+  geom_col() +
+  facet_wrap( ~ title, scales = "free") +
+  theme(legend.position="bottom")+
+  coord_flip()
+```
+In Kim, the main characters have the largest total sentiment score, with Kim having the highest of approx 550. As he is the protagonist of the story, as well as a beggar turned British-Indian Spy, he is bound to have a tumultuous life with several sentiments attached to his major milestones.
+
+The overwhelming majority of male characters is seen as well. 4 out of 21 characters are female, with lowest sentiment score associated with them, which could imply that they are used as plot devices instead of fleshed out characters. This is not relevant to the theme of colonialism, but we did find it interesting.
+
+Another noticeable pattern is the use of majorly indian characters in Tagore’s corpora, whereas Kipling had a mix of both English and Indian characters. This could be Tagore’s subtle effort to provide representation to Indian characters which could be for two reasons; showing his disdain towards the British empire and/or to reassure the Indian readers that their literature would not be white-washed by the English culture.
+
+Lastly, the use of Muslim names in Kipling’s books (Mahbub Ali, Kadir, Khan) juxtaposed with the complete absence of Muslim names in Tagore’s books may show a subconscious favouring of the Hindu religion on Tagore’s part. While he favoured brotherhood in Bengal between the two religions, we cannot deny his slightly bigoted view on Islam, which comes through in these graphs.
+
+### Location and Sentiment
+
+```{r chart 2}
+ner_total_sentiment %>%
+  group_by(title) %>%
+  filter(kind == "location") %>%
+   top_n(7) %>% 
+ mutate(entity = reorder(entity, (desc(total)))) %>%  
+  ggplot(aes(entity, y = total, fill = title)) +
+  geom_col() +
+  facet_wrap( ~ title, scales = "free") +
+  theme(legend.position="bottom") +
+  coord_flip()
+```
+In Tagore’s corpus, Calcutta and Bengal are favoured.  This makes sense because Calcutta is Tagore’s hometown and perhaps he is not given over to acts of geographical imagination. Some outliers are Leh and Bombay, but they have a negligible sentiment attached to them.
+
+What caught our eye in the Tagore corpus was the high sentiment(8) associated with Chandernagore in Mashi. At the time Tagore was writing, Chandernagore was the only city in Bengal that was not under British occupation. It was a French colony. This positive depiction of Chandernagore could then be Tagore’s way of expressing dissatisfaction against British autonomy in the parts of India that were under their occupation. 
+
+Kipling is relatively more spread out in the country (Umballa, Benares, Bombay, Simla, Delhi, Calcutta), which could imply the extent of the British Empire. Bombay was an important trade port for the British Empire, Delhi served as the working capital and Simla served as the Summer capital of the British Raj. As you can see, they were places of great importance and hence Kipling may use these places to emphasise the rule of the British Raj.
+
+## Data Visualisation 2: Sentiment Analysis using radar charts
+
+To probe further the relation between entities and sentiments, we opted for a different and more detailed version of the NRC sentiment analysis. This visualisation gives us the detailed break up of emotions associated with  characters and locations. 
+
+### Characters and Sentiment
+
+```{r chart3}
+radar_facet <- entities_matches_sentiment %>%
+  select(-positive,-negative,-sentiment) %>% #drop out the unnecessary columns
+  filter(kind == "person") %>%
+  group_by(title, entity, kind) %>%
+  summarise(across(anger:trust, sum)) %>%
+  mutate(total = rowSums(across(where(is.numeric))))  %>%
+  arrange(desc(total)) %>%
+  head(6)  %>% #Change number to include more or fewer entities
+  mutate(across(anger:trust, .fns = ~ round((. / total) * 100))) %>%
+  select(-total)
+
+ggRadar(
+  data = radar_facet,
+  mapping = aes(color = title, facet = entity),
+  rescale = FALSE,
+  interactive = TRUE,
+  use.label = TRUE,
+  size = 1,
+  legend.position = "bottom"
+)
+```
+In Kim and The Home and The World, the protagonists, Kim and Sandip, have all the emotions present in a high range of quantity. This asserts that being the protagonists they will be the most fleshed out characters. The construction of sentiments around both the characters is very similar. The scores differ by a mere 1-3 points.
+
+While both characters resemble each other closely in sentiments, creating an almost prototype of a hero, it is important to note that Sandip does not have sentiments of disgust and fear associated with him. These two emotions seem to be popular in Kipling but do not find representation in Tagore. AFter all, disgust and fear are two sentiments closely associated with the ‘other’, a space that is not demarcated in Tagore as it is in Kipling. 
+
+Another character that appears in this sentiment analysis is King— a position common to the stories of Kim, Phantom Rickshaw, and The Home…Although this is not the same character, the king was a common office in colonial India. Kipling associates higher trust(22) to this position of power, than Tagore (17). This might also reflect the colonial writing that trusts more firmly other power structures with which it is allied. Overall, Tagore’s sentiments for the King are lesser than that of Kipling. 
+
+### Locations and Sentiment
+
+This detailed sentiment analysis was also carried out on the locations in the corpora.
+
+```{r chart4}
+radar_facet_sentiment <- entities_matches_sentiment %>%
+  filter(kind == "location") %>%
+  group_by(title, entity, kind) %>%
+  summarise(across(anger:sentiment, sum)) %>%
+  arrange(desc(sentiment))  %>%
+  head(5)  %>% 
+  select(-positive,-negative,-sentiment)
+
+ggRadar(
+  data = radar_facet_sentiment,
+  mapping = aes(color = title, facet = entity),
+  rescale = FALSE,
+  interactive = TRUE,
+  use.label = TRUE,
+  size = 2,
+  legend.position = "bottom"
+)
+```
+It is interesting to note that the trust score for India is 68, which is almost double that of England (32). 
+In the representation of India in Kim, one of the strongest sentiments is fear (49) and anticipation (65). Portraying India as a land of constant war (as does the theme of the Great Game in Kim) or a land of unknown forests and savages may be some of the reasons for this high amount of fear. Yet, the strongest emotion in India is trust (68). Again, this navigation between fearing a place and trusting it takes us back to Kipling’s experience of living in Asia, a culture unknown to him, that having grown up in, he has no choice but to trust. It could also refer to the trust shared between the main characters and how they overcome an unfamiliar situation and terrain together.
+
+
+The drawback of this analysis has been that places in Tagore’s work did not have as rich a variety of sentiments as Kipling and hence did not appear in the top entities. While future projects can try integrating Tagore’s space in the analysis, we think that it is important to flag the very fact that these spaces did not have overall high sentiments. This might be a reflection of the writing style of both the authors, with Tagore being more subtle or indirect about his representations of space. Sometimes, the ideas of a place reflect its sentiments, an indirect process not easy to capture in R. 
+
+## Data Visualisation 3: Word Relationships and Correlations
+
+```{r corr kip}
+library(widyr)
+tidy_tag <- tagore_corpus %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words)
+
+kip_section_words <- kipling_corpus %>%
+  mutate(section = row_number() %/% 10) %>%
+  filter(section > 0) %>%
+  unnest_tokens(word, text)
+
+tag_section_words <- tagore_corpus %>%
+  mutate(section = row_number() %/% 10) %>%
+  filter(section > 0) %>%
+  unnest_tokens(word, text)
+
+word_cors <- kip_section_words %>%
+  group_by(word) %>%
+  filter(n() >= 20) %>%
+  pairwise_cor(word, section, sort = TRUE)
+
+word_cors %>%
+  filter(item1 %in% c("father","colonel")) %>%
+  group_by(item1) %>%
+  ungroup() %>%
+  top_n(7) %>%
+  mutate(item2 = reorder(item2, correlation)) %>%
+  ggplot(aes(item2, correlation)) + 
+  geom_bar(stat = "identity") +
+  geom_col() +
+  facet_wrap(~ item1, scales = "free") +
+  coord_flip()
+```
+
+The use of titles like Father Victor, Father Bennet, Colonel Creighton (as seen in word_cors) emphasises the recurring theme of having white people in positions of power, be it in religion or war, whereas Kim, who is of Irish origin but is as dark as a native, is a lowly Sahib.
+
+```{r corr tag}
+word_cors <- tag_section_words %>%
+  group_by(word) %>%
+  filter(n() >= 10) %>%
+  pairwise_cor(word, section, sort = TRUE)
+
+word_cors %>%
+  filter(item1 %in% c("bengal")) %>%
+  group_by(item1) %>%
+  ungroup() %>%
+  top_n(12) %>%
+  mutate(item2 = reorder(item2, correlation)) %>%
+  ggplot(aes(item2, correlation)) + 
+  geom_bar(stat = "identity") +
+  geom_col() +
+  facet_wrap(~ item1, scales = "free") +
+  coord_flip()
+```
+
+Furthermore, the correlations with the word "Calcutta" have more regal connotations, with words like queen, divine and clear. It is clear that Tagore pays his respects to his motherland. Calcutta also correlates with the word "ours", which conveys to the reader a sense of ownership. This could be a way that Tagore retains his claim on his native land, in spite of the British Raj. This is yet another way to reassure the reader and convey Tagore's disdain for the empire.
+
+## Conclusion
+
+The results of the R analysis on two authors— Kipling and Tagore—were interesting but not very conclusive. Kipling associates Indian spaces, and characters, with fear, anticipation and sadness. While this does hint at a colonial gaze, we cannot ignore the fact that his portrayal of England also does not top the list. Within his books, there is an ambivalence of sentiments towards place. Tagore’s representation of space does not show any nationalistic/patriotic sentiment we were hoping to find. That being said, Tagore’s dislike of British occupation is evident in the positive sentiments associated with Chandernagore, a traditionally French colony. 
+
+In conclusion, we feel that the identity of British India, as well as the two authors is a hybrid and cannot be separated into binaries. The term “British India” itself reflects this mixing of space. In this regard, Kipling espouses the gaze of a colonial outsider, but there are moments when his integration into Indian culture blurs this strict division. Tagore’s views on India, the spaces and the people too, are not definite and evolve in time. While we have amassed sufficient evidence, to explicitly state whether we proved or disproved our hypothesis without coupling it with a deep reading of the corpora would be reductive.
+
+## Reflection
+
+Analyzing text in R is very useful for a) Identifying entities, and b) Allocating sentiments. However, the symbols recognised by the openNLP package is limited to that of the Anglo-Saxon languages. Our previous corpus consisted of travelogues featuring Japanese and Arabic symbols, which weren’t recognised by the program and hence discounted a lot of important words. While these books are mostly written in third person; for a book in first person, we would discount the narrator’s characteristics and sentiments because they’re never explicitly mentioned.
+
+Another issue we came across was that Words like alight, Bengali, vitality, alive, malignant, triviality showed Ali as a character as it is a substring of these words. As Ali is a name that was frequently used, the program often skipped over the preceding and succeeding characters to find an entity. This also happened with Mani, as it is a substring of Mussalmani, manifest, Manipur, etc. 
+
+While NLP is an extremely useful method of distant reading, the complexity of our hypothesis, coupled with the problems we faced during this assignment, is a testament to the fact that the only way to truly understand the themes of a corpus is by both distant and deep reading.
+
+
+#### Notes
+We just wanted to thank Professor Joost, Rathi Kashi, Soham Bagchi and Vibodh Nautiyal for helping us with the code. Most of the code written in the chunks are either from basic_text_mining or R Documentation pages.
